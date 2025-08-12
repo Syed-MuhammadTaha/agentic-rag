@@ -1,23 +1,20 @@
-"""Data ingestion pipeline for loading processed data into Qdrant collections."""
+"""Data ingestion pipeline for loading processed data into Qdrant collections using LangChain."""
 
 import json
 import time
 import uuid
-from typing import List, Dict, Any, Generator, Optional
 from dataclasses import dataclass
+from typing import Any, Dict, Generator, List, Optional
+
+from langchain_core.documents import Document
+from langchain_qdrant import QdrantVectorStore
+from preprocessor import DataType, PreProcessor
 from qdrant_client import QdrantClient
-from qdrant_client.models import (
-    Distance,
-    VectorParams,
-    PointStruct,
-    Filter,
-    FieldCondition,
-    MatchValue,
-)
+from qdrant_client.models import Distance, VectorParams
 
 from config import Config
-from embeddings import Embedder
-from preprocessor import PreProcessor, DataType
+from utils.embeddings import Embedder
+
 
 @dataclass
 class ProgressUpdate:
@@ -39,12 +36,13 @@ class ProgressUpdate:
 
 
 class QdrantIngestion:
-    """Pipeline for ingesting documents into Qdrant collections."""
+    """Pipeline for ingesting documents into Qdrant collections using LangChain."""
 
     def __init__(self):
         """Initialize the ingestion pipeline with Qdrant client."""
         self.client = QdrantClient(url=Config.QDRANT_URL)
         self._embedder = None  # Lazy load embedder
+        self._vector_stores = {}  # Lazy load vector stores
         
         # Define collection names and their vector dimensions
         self.collections = {
@@ -64,6 +62,16 @@ class QdrantIngestion:
         if self._embedder is None:
             self._embedder = Embedder()
         return self._embedder
+        
+    def get_vector_store(self, collection_name: str) -> QdrantVectorStore:
+        """Get or create a vector store for a collection."""
+        if collection_name not in self._vector_stores:
+            self._vector_stores[collection_name] = QdrantVectorStore(
+                client=self.client,
+                collection_name=collection_name,
+                embedding=self.embedder
+            )
+        return self._vector_stores[collection_name]
 
     def cleanup_collections(self) -> None:
         """Safely delete all collections."""
@@ -104,22 +112,14 @@ class QdrantIngestion:
                     print(f"Error creating collection {collection_name}: {e}")
 
     def document_exists(self, content: str, collection_name: str) -> bool:
-        """Check if a document with similar content exists in the collection using text search."""
+        """Check if a document with similar content exists using semantic search."""
         try:
-            # First try exact text match
-            results = self.client.scroll(
-                collection_name=collection_name,
-                limit=1,
-                scroll_filter=Filter(
-                    must=[
-                        FieldCondition(
-                            key="content",
-                            match=MatchValue(value=content)
-                        )
-                    ]
-                )
-            )[0]
-            
+            vector_store = self.get_vector_store(collection_name)
+            results = vector_store.similarity_search_with_score(
+                query=content,
+                k=1,
+                score_threshold=Config.SCORE_THRESHOLD
+            )
             return len(results) > 0
         except Exception as e:
             print(f"Error checking document existence: {e}")
@@ -130,48 +130,34 @@ class QdrantIngestion:
         documents: List[Dict[str, Any]],
         collection_name: str
     ) -> int:
-        """Process a batch of documents and insert into Qdrant."""
+        """Process a batch of documents using LangChain's vector store."""
         batch_start_time = time.time()
 
         try:
-            # Prepare texts and metadata
-            texts = [doc["content"] for doc in documents]
-            metadatas = [doc["metadata"] for doc in documents]
+            # Convert to LangChain documents
+            langchain_docs = [
+                Document(
+                    page_content=doc["content"],
+                    metadata=doc["metadata"]
+                ) for doc in documents
+            ]
             
-            # Generate embeddings
-            embeddings = self.embedder.embed_documents(texts)
-            if not embeddings:
-                print("Failed to generate embeddings for batch")
-                return 0
-
-            # Prepare points for Qdrant
-            points = []
-            for text, metadata, embedding in zip(texts, metadatas, embeddings):
-                # Keep payload structure simple
-                payload = {
-                    "content": text,
-                    "metadata": metadata
-                }
-                
-                point = PointStruct(
-                    id=str(uuid.uuid4()),
-                    vector=embedding,
-                    payload=payload
-                )
-                points.append(point)
-
-            # Insert into Qdrant
-            self.client.upsert(
-                collection_name=collection_name,
-                points=points
+            # Generate UUIDs for the batch
+            doc_ids = [str(uuid.uuid4()) for _ in documents]
+            
+            # Add documents to vector store
+            vector_store = self.get_vector_store(collection_name)
+            vector_store.add_documents(
+                documents=langchain_docs,
+                ids=doc_ids
             )
 
             batch_time = time.time() - batch_start_time
             print(
-                f"Inserted {len(texts)} documents in {batch_time:.2f} seconds. "
-                f"Speed: {len(texts) / batch_time:.2f} docs/sec"
+                f"Inserted {len(documents)} documents in {batch_time:.2f} seconds. "
+                f"Speed: {len(documents) / batch_time:.2f} docs/sec"
             )
-            return len(texts)
+            return len(documents)
 
         except Exception as e:
             print(f"Error processing batch: {e}")
@@ -230,7 +216,7 @@ class QdrantIngestion:
             current_batch.append(doc_dict)
 
             # Process batch when it reaches the size limit
-            if len(current_batch) >= batch_size:
+            if len(current_batch) >= Config.BATCH_SIZE:
                 processed = self.process_batch(current_batch, collection_name)
                 processed_documents += processed
                 current_batch = []

@@ -1,8 +1,11 @@
-import requests
-from config import Config
 from typing import List
+
+import requests
 from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel
+
+from config import Config
+
 
 class Embedder(BaseModel, Embeddings):
     """

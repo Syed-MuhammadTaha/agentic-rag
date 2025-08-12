@@ -3,35 +3,18 @@
 Returns a predefined response. Replace logic and configuration as needed.
 """
 from dataclasses import dataclass
-from typing import Annotated, Any, Dict
+from typing import Annotated
 
-from dotenv import load_dotenv
-from langchain.chat_models.base import init_chat_model
-from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from typing_extensions import TypedDict
 
-load_dotenv()
+from src.agent.utils.nodes import planner_node
+from src.agent.utils.state import PlanExecute
 
-
-
-@dataclass
-class State(TypedDict):
-    """State schema for the LangGraph agent."""
-    messages: Annotated[list, add_messages]
+graph_builder = StateGraph(PlanExecute)
 
 
-graph_builder = StateGraph(State)
-
-
-llm = init_chat_model("groq:llama-3.1-8b-instant")
-
-def chatbot(state: State):
-    return {"messages": [llm.invoke(state["messages"])]}
-
-graph_builder.add_node("chatbot", chatbot)
-graph_builder.add_edge(START, "chatbot")
-graph_builder.add_edge("chatbot", END)
+graph_builder.add_node("planner", planner_node)
+graph_builder.add_edge(START, "planner")
+graph_builder.add_edge("planner", END)
 graph = graph_builder.compile()
 

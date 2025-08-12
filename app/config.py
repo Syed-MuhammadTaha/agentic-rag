@@ -1,5 +1,7 @@
 """Configuration settings for the application."""
 
+import os
+
 class Config:
     """Configuration class for the application."""
     
@@ -21,3 +23,5 @@ class Config:
 
     DATA_PATH = "data/Harry Potter - Book 1 - The Sorcerers Stone.pdf"
     OUTPUT_PATH = "data/processed"
+
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")

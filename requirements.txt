@@ -2,3 +2,10 @@ pymupdf
 langchain
 langgraph
 qdrant-client
+langchain-qdrant
+langchain-core
+langsmith
+langchain-groq
+python-dotenv
+langgraph-cli[inmem]
+ruff

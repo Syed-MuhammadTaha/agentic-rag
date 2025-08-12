@@ -1,13 +1,15 @@
 """Data preprocessing utilities for Harry Potter text into chunks, summaries, and quotes."""
 
-import pymupdf
-from langchain.docstore.document import Document
+import os
 import re
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
-import os
+from typing import Any, Dict, List
+
+import pymupdf
+from langchain.docstore.document import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
 from config import Config
 
 
