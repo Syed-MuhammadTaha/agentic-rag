@@ -1,19 +1,20 @@
 """Data ingestion pipeline for loading processed data into Qdrant collections using LangChain."""
 
+import hashlib
 import json
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Set
 
 from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore
-from preprocessor import DataType, PreProcessor
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 
-from config import Config
-from utils.embeddings import Embedder
+from app.config import Config
+from app.scripts.preprocessor import DataType, PreProcessor
+from app.utils.embeddings import Embedder
 
 
 @dataclass
@@ -26,6 +27,7 @@ class ProgressUpdate:
     error: Optional[str] = None
 
     def dict(self) -> Dict[str, Any]:
+        """Convert progress update to dictionary."""
         return {
             "progress": self.progress,
             "processed": self.processed,
@@ -57,10 +59,10 @@ class QdrantIngestion:
         }
 
     @property
-    def embedder(self) -> Embedder:
+    def embedder(self):
         """Lazy load the embedder when needed."""
         if self._embedder is None:
-            self._embedder = Embedder()
+            self._embedder = Embedder()  # Returns JinaEmbeddings instance
         return self._embedder
         
     def get_vector_store(self, collection_name: str) -> QdrantVectorStore:
@@ -72,6 +74,52 @@ class QdrantIngestion:
                 embedding=self.embedder
             )
         return self._vector_stores[collection_name]
+
+    @staticmethod
+    def compute_content_hash(content: str) -> str:
+        """Compute MD5 hash of content for duplicate detection."""
+        return hashlib.md5(content.encode('utf-8')).hexdigest()
+
+    def get_existing_hashes(self, collection_name: str) -> Set[str]:
+        """Retrieve all existing content hashes from a collection."""
+        try:
+            existing_hashes = set()
+
+            # Check if collection exists and has points
+            try:
+                collection_info = self.client.get_collection(collection_name)
+                if collection_info.points_count == 0:
+                    return existing_hashes
+            except Exception:
+                # Collection doesn't exist yet
+                return existing_hashes
+
+            # Scroll through all points and collect hashes
+            offset = None
+            while True:
+                records, offset = self.client.scroll(
+                    collection_name=collection_name,
+                    limit=100,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,  # We don't need vectors, just metadata
+                )
+
+                if not records:
+                    break
+
+                for record in records:
+                    if record.payload and 'content_hash' in record.payload:
+                        existing_hashes.add(record.payload['content_hash'])
+
+                if offset is None:
+                    break
+
+            return existing_hashes
+
+        except Exception as e:
+            print(f"Error fetching existing hashes: {e}")
+            return set()
 
     def cleanup_collections(self) -> None:
         """Safely delete all collections."""
@@ -111,20 +159,6 @@ class QdrantIngestion:
                 else:
                     print(f"Error creating collection {collection_name}: {e}")
 
-    def document_exists(self, content: str, collection_name: str) -> bool:
-        """Check if a document with similar content exists using semantic search."""
-        try:
-            vector_store = self.get_vector_store(collection_name)
-            results = vector_store.similarity_search_with_score(
-                query=content,
-                k=1,
-                score_threshold=Config.SCORE_THRESHOLD
-            )
-            return len(results) > 0
-        except Exception as e:
-            print(f"Error checking document existence: {e}")
-            return False
-
     def process_batch(
         self,
         documents: List[Dict[str, Any]],
@@ -134,13 +168,20 @@ class QdrantIngestion:
         batch_start_time = time.time()
 
         try:
-            # Convert to LangChain documents
-            langchain_docs = [
-                Document(
-                    page_content=doc["content"],
-                    metadata=doc["metadata"]
-                ) for doc in documents
-            ]
+            # Convert to LangChain documents and add content hash to metadata
+            langchain_docs = []
+            for doc in documents:
+                # Compute content hash and add to metadata
+                content_hash = self.compute_content_hash(doc["content"])
+                metadata = doc["metadata"].copy()
+                metadata["content_hash"] = content_hash
+                
+                langchain_docs.append(
+                    Document(
+                        page_content=doc["content"],
+                        metadata=metadata
+                    )
+                )
             
             # Generate UUIDs for the batch
             doc_ids = [str(uuid.uuid4()) for _ in documents]
@@ -190,29 +231,50 @@ class QdrantIngestion:
             yield json.dumps(update.dict()) + "\n"
             return
 
-        processed_documents = 0
         collection_name = collection_info["name"]
+        
+        # Get existing hashes once upfront (much faster than per-document checks)
+        print(f"Checking for existing documents in {collection_name}...")
+        existing_hashes = self.get_existing_hashes(collection_name)
+        print(f"Found {len(existing_hashes)} existing documents")
 
-        # Process documents in batches
-        current_batch = []
+        # Filter out duplicates and prepare documents for ingestion
+        new_documents = []
+        skipped_count = 0
+        
         for doc in documents:
+            content_hash = self.compute_content_hash(doc.page_content)
+            
+            if content_hash in existing_hashes:
+                skipped_count += 1
+                continue
+            
             # Convert Document to dict format
             doc_dict = {
                 "content": doc.page_content,
                 "metadata": doc.metadata
             }
+            new_documents.append(doc_dict)
 
-            # Check for duplicates
-            if self.document_exists(doc.page_content, collection_name):
-                update = ProgressUpdate(
-                    progress=int((processed_documents / total_documents) * 100),
-                    processed=processed_documents,
-                    total=total_documents,
-                    message="Skipped duplicate document"
-                )
-                yield json.dumps(update.dict()) + "\n"
-                continue
+        if skipped_count > 0:
+            print(f"Skipped {skipped_count} duplicate documents")
+        
+        if len(new_documents) == 0:
+            update = ProgressUpdate(
+                progress=100,
+                processed=0,
+                total=total_documents,
+                message=f"All {total_documents} documents already exist. Nothing to ingest."
+            )
+            yield json.dumps(update.dict()) + "\n"
+            return
 
+        print(f"Ingesting {len(new_documents)} new documents...")
+        processed_documents = 0
+
+        # Process documents in batches
+        current_batch = []
+        for doc_dict in new_documents:
             current_batch.append(doc_dict)
 
             # Process batch when it reaches the size limit
@@ -222,11 +284,11 @@ class QdrantIngestion:
                 current_batch = []
 
                 # Send progress update
-                progress = int((processed_documents / total_documents) * 100)
+                progress = int((processed_documents / len(new_documents)) * 100)
                 update = ProgressUpdate(
                     progress=progress,
                     processed=processed_documents,
-                    total=total_documents,
+                    total=len(new_documents),
                     message=f"Processed batch: {processed} documents"
                 )
                 yield json.dumps(update.dict()) + "\n"
@@ -240,8 +302,8 @@ class QdrantIngestion:
         update = ProgressUpdate(
             progress=100,
             processed=processed_documents,
-            total=total_documents,
-            message=f"Completed ingestion for {data_type.value}"
+            total=len(new_documents),
+            message=f"Completed ingestion for {data_type.value} ({skipped_count} duplicates skipped)"
         )
         yield json.dumps(update.dict()) + "\n"
 

@@ -10,7 +10,7 @@ import pymupdf
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from config import Config
+from app.config import Config
 
 
 class DataType(Enum):

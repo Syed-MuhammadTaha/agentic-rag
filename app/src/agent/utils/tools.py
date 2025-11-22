@@ -1,12 +1,11 @@
 from typing import List
 
+from app.config import Config
+from app.utils.embeddings import Embedder
 from langchain_core.documents import Document
 from langchain_core.tools import tool
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-
-from config import Config
-from utils.embeddings import Embedder
 
 # Initialize Qdrant stores
 client = QdrantClient(url=Config.QDRANT_URL)

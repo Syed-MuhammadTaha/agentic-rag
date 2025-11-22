@@ -1,49 +1,24 @@
-from typing import List
+"""Embeddings using Jina Cloud API via LangChain integration."""
 
-import requests
-from langchain_core.embeddings import Embeddings
-from pydantic import BaseModel
+from langchain_community.embeddings import JinaEmbeddings
 
-from config import Config
+from app.config import Config
 
 
-class Embedder(BaseModel, Embeddings):
-    """
-    A class to generate text embeddings using TorchServe.
-    """
-    @classmethod
-    def embed_query(self, text: str) -> List[float]:
-        """
-        Generates an embedding for a single query text using TorchServe.
-        """
-        headers = {"Content-Type": "application/json"}
-        data = {"input": [text]}
-
-        try:
-            response = requests.post(Config.TORCHSERVE_URL, json=data, headers=headers)
-            response.raise_for_status()
-            return response.json()[0]
-        except Exception as e:
-            print(f"Error generating embedding for query: {e}")
-            return None
-
-    @classmethod
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """
-        Generates embeddings for multiple documents using TorchServe.
-        """
-        headers = {"Content-Type": "application/json"}
-        data = {"input": texts}
-
-        try:
-            response = requests.post(Config.TORCHSERVE_URL, json=data, headers=headers)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            print(f"Error generating embeddings for documents: {e}")
-            return None
+def Embedder():
+    """Create and return a Jina embeddings instance."""
+    if not Config.JINA_API_KEY:
+        raise ValueError("JINA_API_KEY environment variable is not set")
+    
+    return JinaEmbeddings(
+        jina_api_key=Config.JINA_API_KEY,
+        model_name=Config.EMBEDDING_MODEL,
+    )
 
 
 if __name__ == "__main__":
-    print(len(Embedder.embed_query("Hello, world!")))
-    print(len(Embedder.embed_documents(["Hello, world!", "Hello, world!"])))
+    embedder = Embedder()
+    print(f"Query embedding dimension: {len(embedder.embed_query('Hello, world!'))}")
+    print(
+        f"Document embeddings count: {len(embedder.embed_documents(['Hello, world!', 'Hello, world!']))}"
+    )

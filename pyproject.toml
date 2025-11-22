@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=73.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-rag"
+version = "0.1.0"
+description = "An intelligent RAG system using LangGraph and Qdrant"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+    "pymupdf",
+    "langchain",
+    "langgraph>=0.2.6",
+    "qdrant-client",
+    "langchain-qdrant",
+    "langchain-core",
+    "langchain-community",
+    "langsmith",
+    "langchain-groq",
+    "python-dotenv>=1.0.1",
+    "ruff",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.13.0",
+    "ruff>=0.8.2",
+    "pytest>=8.3.5",
+]
+
+[tool.setuptools]
+packages = ["agentic_rag"]
+
+[tool.setuptools.package-dir]
+agentic_rag = "src/agentic_rag"
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "D",    # pydocstyle
+    "UP",   # pyupgrade
+]
+ignore = [
+    "D100",  # Missing docstring in public module
+    "D104",  # Missing docstring in public package
+    "D203",  # 1 blank line required before class docstring
+    "D213",  # Multi-line docstring summary should start at the second line
+    "D401",  # First line should be in imperative mood
+    "E501",  # Line too long
+    "T201",  # print statements
+    "UP006", # Use `list` instead of `List` for type annotations
+    "UP007", # Use `X | Y` for type annotations
+    "UP035", # Import from `collections.abc` instead of `typing`
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+"scripts/*" = ["D", "T201"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[dependency-groups]
+dev = [
+    "anyio>=4.7.0",
+    "langgraph-cli[inmem]>=0.2.8",
+    "mypy>=1.13.0",
+    "pytest>=8.3.5",
+    "ruff>=0.8.2",
+]
+

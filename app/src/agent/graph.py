@@ -2,8 +2,6 @@
 
 Returns a predefined response. Replace logic and configuration as needed.
 """
-from dataclasses import dataclass
-from typing import Annotated
 
 from langgraph.graph import END, START, StateGraph
 
