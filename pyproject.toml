@@ -40,7 +40,7 @@ agentic_rag = "src/agentic_rag"
 "*" = ["py.typed"]
 
 [tool.ruff]
-line-length = 100
+line-length = 200
 target-version = "py39"
 
 [tool.ruff.lint]

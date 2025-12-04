@@ -8,4 +8,3 @@ setup(
     packages=find_packages(include=["app", "app.*"]),
     python_requires=">=3.9",
 )
-
