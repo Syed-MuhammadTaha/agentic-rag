@@ -6,10 +6,14 @@ from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_ollama import ChatOllama
 
 from agent.utils.prompts import (
+    can_be_answered_prompt_template,
     is_distilled_content_grounded_on_content_prompt_template,
+    is_grounded_on_facts_prompt_template,
     keep_only_relevant_content_prompt_template,
 )
 from agent.utils.state import (
+    CanBeAnswered,
+    GroundedOnFacts,
     Input,
     IsDistilledContentGroundedOnContent,
     KeepRelevantContent,
@@ -124,3 +128,62 @@ def is_distilled_content_grounded_on_content(
         return "grounded on the original context"
     else:
         return "not grounded on the original context"
+
+
+def is_answer_grounded_on_context(state):
+    """Determine if the answer to the question is grounded in the facts.
+
+    Args:
+        state: A dictionary containing the context and answer.
+
+    Returns:
+        "hallucination" if the answer is not grounded in the context,
+        "grounded on context" if the answer is grounded in the context.
+    """
+    context = state["context"]
+    answer = state["answer"]
+    # Create the prompt object
+    is_grounded_on_facts_prompt = PromptTemplate(
+        template=is_grounded_on_facts_prompt_template,
+        input_variables=["context", "answer"],
+    )
+
+    # Build the chain: prompt -> LLM -> structured output
+    is_grounded_on_facts_chain = (
+        is_grounded_on_facts_prompt | llm.with_structured_output(GroundedOnFacts)
+    )
+
+    # Use the is_grounded_on_facts_chain to check if the answer is grounded in the context
+    result = is_grounded_on_facts_chain.invoke({"context": context, "answer": answer})
+    grounded_on_facts = result.grounded_on_facts
+
+    if not grounded_on_facts:
+        return "hallucination"
+    else:
+        return "grounded on context"
+
+
+def can_question_be_answered(state):
+    """Check if the question can be fully answered from the aggregated context.
+
+    Returns: "useful" if it can be answered, "not_useful" if more context is needed.
+    """
+    question = state["question"]
+    aggregated_context = state.get("aggregated_context", "")
+
+    # Create the prompt for checking if the question can be answered
+    can_be_answered_prompt = ChatPromptTemplate.from_template(
+        can_be_answered_prompt_template
+    )
+
+    # Build the chain: prompt -> LLM -> structured output
+    can_be_answered_chain = can_be_answered_prompt | llm.with_structured_output(
+        CanBeAnswered
+    )
+
+    # Check if the question can be fully answered from the aggregated context
+    result = can_be_answered_chain.invoke(
+        {"question": question, "context": aggregated_context}
+    )
+
+    return "useful" if result.can_be_answered else "not_useful"

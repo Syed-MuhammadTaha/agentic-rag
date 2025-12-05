@@ -147,3 +147,46 @@ Context:
 Question:  
 {question}  
 """
+is_grounded_on_facts_prompt_template = """You are a fact-checker that determines if the given answer {answer} is grounded in the given context {context}
+you don't mind if it doesn't make sense, as long as it is grounded in the context.
+output a json containing the answer to the question, and appart from the json format don't output any additional text.
+ """
+
+can_be_answered_prompt_template = """You are an evaluator that determines if a question can be fully answered from the given context.
+
+Question: {question}
+Context: {context}
+
+Your task is to determine if the context provides enough information to fully and comprehensively answer the question.
+
+Return True if:
+- The context contains all the necessary information to answer the question completely
+- No important aspects of the question are left unanswered
+
+Return False if:
+- The context is missing key information needed to answer the question
+- Only partial information is available
+- Additional context or information would be needed for a complete answer
+
+Provide a clear explanation for your decision.
+"""
+
+final_answer_prompt_template = """You are a comprehensive answer synthesizer that creates a complete, well-structured response based on all the gathered evidence.
+
+Original Question: {question}
+
+Aggregated Context and Evidence:
+{aggregated_context}
+
+Past Steps Taken:
+{past_steps}
+
+Your task is to:
+1. Synthesize all the information from the aggregated context
+2. Create a complete, coherent answer to the original question
+3. Ensure the answer is well-structured and addresses all aspects of the question
+4. Base your answer ONLY on the provided context - do not add external information
+5. If multiple pieces of evidence support the answer, weave them together naturally
+
+Provide a comprehensive final answer that fully addresses the user's question.
+"""

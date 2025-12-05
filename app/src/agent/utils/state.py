@@ -104,3 +104,30 @@ class IsDistilledContentGroundedOnContent(BaseModel):
     explanation: str = Field(
         description="An explanation of why the distilled content is or is not grounded on the original context."
     )
+
+
+class GroundedOnFacts(BaseModel):
+    """Output schema for fact-checking if an answer is grounded in the provided context."""
+
+    grounded_on_facts: bool = Field(
+        description="Answer is grounded in the facts, 'yes' or 'no'"
+    )
+
+
+class CanBeAnswered(BaseModel):
+    """Output schema for checking if a question can be fully answered from context."""
+
+    can_be_answered: bool = Field(
+        description="True if the question can be fully answered from the context, False otherwise."
+    )
+    explanation: str = Field(
+        description="Explanation of why the question can or cannot be fully answered."
+    )
+
+
+class FinalAnswer(BaseModel):
+    """Output schema for the final synthesized answer."""
+
+    final_answer: str = Field(
+        description="The complete, synthesized answer to the original question based on all gathered evidence."
+    )

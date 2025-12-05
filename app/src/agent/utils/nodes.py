@@ -6,6 +6,7 @@ from langchain_ollama import ChatOllama
 
 from agent.utils.prompts import (
     break_down_plan_prompt_template,
+    final_answer_prompt_template,
     planner_prompt,
     question_answer_cot_prompt_template,
     replanner_prompt,
@@ -13,6 +14,7 @@ from agent.utils.prompts import (
 )
 from agent.utils.state import (
     ActPossibleResults,
+    FinalAnswer,
     Input,
     Plan,
     PlanExecute,
@@ -140,3 +142,40 @@ def answer_question_from_context_node(state: PlanExecute):
     answer = output.answer_based_on_content
     # Return the answer, context, and question in a dictionary
     return {"answer": answer, "context": context, "question": question}
+
+
+def get_final_answer_node(state: PlanExecute) -> dict:
+    """Synthesize all gathered evidence into a comprehensive final answer.
+
+    Args:
+        state: A PlanExecute state containing:
+            - "question": The original user question.
+            - "aggregated_context": All gathered context and evidence.
+            - "past_steps": List of steps taken to gather information.
+
+    Returns:
+        dict: A dictionary with:
+            - "response": The final synthesized answer.
+    """
+    question = state.question
+    aggregated_context = state.aggregated_context
+    past_steps = state.past_steps
+
+    # Prepare input for the final answer chain
+    input_data = {
+        "question": question,
+        "aggregated_context": aggregated_context,
+        "past_steps": past_steps,
+    }
+
+    # Create the prompt template for final answer synthesis
+    final_answer_prompt = ChatPromptTemplate.from_template(final_answer_prompt_template)
+
+    # Build the chain: prompt -> LLM -> structured output
+    final_answer_chain = final_answer_prompt | llm.with_structured_output(FinalAnswer)
+
+    # Invoke the chain to synthesize the final answer
+    output = final_answer_chain.invoke(input_data)
+    final_response = output.final_answer
+
+    return {"response": final_response}
