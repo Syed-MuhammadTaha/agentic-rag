@@ -34,9 +34,7 @@ The system follows a sophisticated plan-execute-replan cycle:
 7. **Validation**: Checks if answers are grounded in retrieved context
 
 ### LangGraph Workflow
-
-<!-- TODO: Add workflow diagram image here -->
-![LangGraph Workflow](docs/workflow-diagram.png)
+<img width="480" height="304" alt="Screenshot 2025-12-06 at 6 56 05 PM" src="https://github.com/user-attachments/assets/3692c076-0e71-427c-b861-1ea19640c40c" />
 
 *The workflow diagram shows the complete agent execution flow with all nodes and conditional edges.*
 
