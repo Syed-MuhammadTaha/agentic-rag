@@ -12,7 +12,6 @@ from agent.utils.nodes import (
 )
 from agent.utils.retrieval_nodes import (
     can_question_be_answered,
-    is_answer_grounded_on_context,
     retrieve_book_quotes_context_per_question,
     retrieve_chunks_context_per_question,
 )
@@ -83,11 +82,14 @@ graph_builder.add_conditional_edges(
 # get_final_answer goes directly to END
 graph_builder.add_edge("get_final_answer", END)
 
-# Conditional edge from answer: check if answer is grounded
-graph_builder.add_conditional_edges(
-    "answer",
-    is_answer_grounded_on_context,
-    {"hallucination": "answer", "grounded on context": "replanner"},
-)
+# Answer node goes directly to replanner (skip grounding check to avoid loops)
+graph_builder.add_edge("answer", "replanner")
+
+# Original slower version with grounding check (can cause infinite loops):
+# graph_builder.add_conditional_edges(
+#     "answer",
+#     is_answer_grounded_on_context,
+#     {"hallucination": "answer", "grounded on context": "replanner"},
+# )
 
 graph = graph_builder.compile()

@@ -3,7 +3,6 @@
 from langgraph.graph import END, StateGraph
 
 from agent.utils.retrieval_nodes import (
-    is_distilled_content_grounded_on_content,
     keep_only_relevant_content,
 )
 from agent.utils.state import QualitativeRetrievalGraphState
@@ -24,14 +23,17 @@ def build_retrieval_workflow(node_name, retrieve_fn):
     graph.add_node("keep_only_relevant_content", keep_only_relevant_content)
     graph.set_entry_point(node_name)
     graph.add_edge(node_name, "keep_only_relevant_content")
-    graph.add_conditional_edges(
-        "keep_only_relevant_content",
-        is_distilled_content_grounded_on_content,
-        {
-            "grounded on the original context": END,
-            "not grounded on the original context": "keep_only_relevant_content",
-        },
-    )
+    # Skip grounding check for speed - go directly to END
+    graph.add_edge("keep_only_relevant_content", END)
+    # Original slower version with grounding check:
+    # graph.add_conditional_edges(
+    #     "keep_only_relevant_content",
+    #     is_distilled_content_grounded_on_content,
+    #     {
+    #         "grounded on the original context": END,
+    #         "not grounded on the original context": "keep_only_relevant_content",
+    #     },
+    # )
     app = graph.compile()
     # Optionally display the graph (commented out for subgraph usage)
     # try:

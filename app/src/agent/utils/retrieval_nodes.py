@@ -1,7 +1,6 @@
 """Retrieval workflow node implementations."""
 
 from dotenv import load_dotenv
-from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_ollama import ChatOllama
 
@@ -22,7 +21,14 @@ from agent.utils.tools import search_chunks, search_quotes
 
 load_dotenv()
 
-llm = ChatOllama(model="llama3.1:8b", temperature=0.0)
+# Optimized LLM configuration for faster inference
+llm = ChatOllama(
+    model="llama3.1:8b",
+    temperature=0.1,  # Slightly higher for faster sampling
+    num_predict=512,  # Limit output tokens
+    num_ctx=2048,  # Reduce context window
+    format="json",  # Force JSON output mode
+)
 
 
 def retrieve_book_quotes_context_per_question(state):
@@ -55,8 +61,13 @@ def retrieve_chunks_context_per_question(state):
 
 def keep_only_relevant_content(state):
     """Filter and retain only the content from the retrieved documents that is relevant to the query."""
-    question = state["question"]
-    context = state["context"]
+    # Handle both Pydantic models and dict
+    question = getattr(
+        state, "question", state.get("question", "") if isinstance(state, dict) else ""
+    )
+    context = getattr(
+        state, "context", state.get("context", "") if isinstance(state, dict) else ""
+    )
 
     # Prepare input for the LLM chain
     input_data = {"query": question, "retrieved_documents": context}
@@ -68,7 +79,7 @@ def keep_only_relevant_content(state):
 
     keep_only_relevant_content_chain = (
         keep_only_relevant_content_prompt
-        | llm.with_structured_output(KeepRelevantContent)
+        | llm.with_structured_output(KeepRelevantContent, method="json_mode")
     )
     # Invoke the LLM chain to filter out non-relevant content
     output = keep_only_relevant_content_chain.invoke(input_data)
@@ -92,36 +103,38 @@ def is_distilled_content_grounded_on_content(
 ) -> str:
     """Determine if the distilled content is grounded in the original context."""
     # Extract distilled content and original context from state
-
-    distilled_content = state["relevant_context"]
-    original_context = state["context"]
+    # Handle both Pydantic models and dict
+    distilled_content = getattr(
+        state,
+        "relevant_context",
+        state.get("relevant_context", "") if isinstance(state, dict) else "",
+    )
+    original_context = getattr(
+        state, "context", state.get("context", "") if isinstance(state, dict) else ""
+    )
 
     # Prepare input for the LLM chain
     input_data = {
         "distilled_content": distilled_content,
         "original_context": original_context,
     }
-    # Output parser for the LLM response
-    is_distilled_content_grounded_on_content_json_parser = JsonOutputParser(
-        pydantic_object=IsDistilledContentGroundedOnContent
+
+    # Create prompt template and chain with structured output
+    is_distilled_content_grounded_on_content_prompt = ChatPromptTemplate.from_template(
+        is_distilled_content_grounded_on_content_prompt_template
     )
 
-    # PromptTemplate for the LLM
-    is_distilled_content_grounded_on_content_prompt = PromptTemplate(
-        template=is_distilled_content_grounded_on_content_prompt_template,
-        input_variables=["distilled_content", "original_context"],
-        partial_variables={
-            "format_instructions": is_distilled_content_grounded_on_content_json_parser.get_format_instructions()
-        },
-    )
+    # Force JSON mode with format parameter
     is_distilled_content_grounded_on_content_chain = (
         is_distilled_content_grounded_on_content_prompt
-        | llm
-        | is_distilled_content_grounded_on_content_json_parser
+        | llm.with_structured_output(
+            IsDistilledContentGroundedOnContent, method="json_mode"
+        )
     )
+
     # Invoke the LLM chain to check grounding
     output = is_distilled_content_grounded_on_content_chain.invoke(input_data)
-    grounded = output["grounded"]
+    grounded = output.grounded
 
     # Return result based on grounding
     if grounded:
@@ -140,8 +153,13 @@ def is_answer_grounded_on_context(state):
         "hallucination" if the answer is not grounded in the context,
         "grounded on context" if the answer is grounded in the context.
     """
-    context = state["context"]
-    answer = state["answer"]
+    # Handle both Pydantic models and dict
+    context = getattr(
+        state, "context", state.get("context", "") if isinstance(state, dict) else ""
+    )
+    answer = getattr(
+        state, "answer", state.get("answer", "") if isinstance(state, dict) else ""
+    )
     # Create the prompt object
     is_grounded_on_facts_prompt = PromptTemplate(
         template=is_grounded_on_facts_prompt_template,
@@ -150,7 +168,8 @@ def is_answer_grounded_on_context(state):
 
     # Build the chain: prompt -> LLM -> structured output
     is_grounded_on_facts_chain = (
-        is_grounded_on_facts_prompt | llm.with_structured_output(GroundedOnFacts)
+        is_grounded_on_facts_prompt
+        | llm.with_structured_output(GroundedOnFacts, method="json_mode")
     )
 
     # Use the is_grounded_on_facts_chain to check if the answer is grounded in the context
@@ -168,8 +187,13 @@ def can_question_be_answered(state):
 
     Returns: "useful" if it can be answered, "not_useful" if more context is needed.
     """
-    question = state["question"]
-    aggregated_context = state.get("aggregated_context", "")
+    # Handle both Pydantic models and dict
+    question = state.question if hasattr(state, "question") else state["question"]
+    aggregated_context = (
+        state.aggregated_context
+        if hasattr(state, "aggregated_context")
+        else state.get("aggregated_context", "")
+    )
 
     # Create the prompt for checking if the question can be answered
     can_be_answered_prompt = ChatPromptTemplate.from_template(
@@ -178,7 +202,7 @@ def can_question_be_answered(state):
 
     # Build the chain: prompt -> LLM -> structured output
     can_be_answered_chain = can_be_answered_prompt | llm.with_structured_output(
-        CanBeAnswered
+        CanBeAnswered, method="json_mode"
     )
 
     # Check if the question can be fully answered from the aggregated context

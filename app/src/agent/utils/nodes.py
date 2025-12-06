@@ -24,13 +24,22 @@ from agent.utils.state import (
 
 load_dotenv()
 
-llm = ChatOllama(model="llama3.1:8b", temperature=0.0)
+# Optimized LLM configuration for faster inference
+llm = ChatOllama(
+    model="llama3.1:8b",
+    temperature=0.1,  # Slightly higher for faster sampling
+    num_predict=512,  # Limit output tokens
+    num_ctx=2048,  # Reduce context window
+    format="json",  # Force JSON output mode
+)
 
 
 def planner_node(state: Input) -> dict:
     """Generate initial plan from user question."""
     planner_prompt_template = ChatPromptTemplate.from_template(planner_prompt)
-    planner_chain = planner_prompt_template | llm.with_structured_output(Plan)
+    planner_chain = planner_prompt_template | llm.with_structured_output(
+        Plan, method="json_mode"
+    )
 
     plan_result = planner_chain.invoke({"question": state.question})
 
@@ -45,7 +54,9 @@ def break_down_plan_node(state: PlanExecute) -> dict:
     breakdown_prompt_template = ChatPromptTemplate.from_template(
         break_down_plan_prompt_template
     )
-    breakdown_chain = breakdown_prompt_template | llm.with_structured_output(Plan)
+    breakdown_chain = breakdown_prompt_template | llm.with_structured_output(
+        Plan, method="json_mode"
+    )
 
     refined_plan_result = breakdown_chain.invoke({"plan": state.plan})
 
@@ -56,19 +67,41 @@ def replanner_node(state: PlanExecute) -> dict:
     """Update plan based on past steps and context."""
     replanner_prompt_template = ChatPromptTemplate.from_template(replanner_prompt)
     replanner_chain = replanner_prompt_template | llm.with_structured_output(
-        ActPossibleResults
+        ActPossibleResults, method="json_mode"
     )
+
+    # Accumulate context from retrieval steps
+    new_aggregated_context = state.aggregated_context
+    if state.context and state.context.strip():
+        if new_aggregated_context:
+            new_aggregated_context += "\n\n" + state.context
+        else:
+            new_aggregated_context = state.context
+
+    # Also accumulate relevant_context if available (from retrieval workflows)
+    if (
+        hasattr(state, "relevant_context")
+        and state.relevant_context
+        and state.relevant_context.strip()
+    ):
+        if new_aggregated_context:
+            new_aggregated_context += "\n\n" + state.relevant_context
+        else:
+            new_aggregated_context = state.relevant_context
 
     result = replanner_chain.invoke(
         {
             "question": state.question,
             "plan": state.plan,
             "past_steps": state.past_steps,
-            "aggregated_context": state.aggregated_context,
+            "aggregated_context": new_aggregated_context,
         }
     )
 
-    return {"plan": result.plan.steps}
+    return {
+        "plan": result.plan.steps,
+        "aggregated_context": new_aggregated_context,
+    }
 
 
 def task_handler_node(state: PlanExecute) -> dict:
@@ -77,7 +110,7 @@ def task_handler_node(state: PlanExecute) -> dict:
         tasks_handler_prompt_template
     )
     task_handler_chain = task_handler_prompt_template | llm.with_structured_output(
-        TaskHandlerOutput
+        TaskHandlerOutput, method="json_mode"
     )
 
     # Get current task (first item in plan)
@@ -86,10 +119,7 @@ def task_handler_node(state: PlanExecute) -> dict:
     result = task_handler_chain.invoke(
         {
             "curr_task": curr_task,
-            "aggregated_context": state.aggregated_context,
             "last_tool": state.tool,
-            "past_steps": state.past_steps,
-            "question": state.question,
         }
     )
 
@@ -116,13 +146,17 @@ def answer_question_from_context_node(state: PlanExecute):
             - "question": The original question.
     """
     # Extract the question from the state
-    question = state["question"]
+    question = state.question if hasattr(state, "question") else state["question"]
     # Use "aggregated_context" if present, otherwise use "context"
-    context = (
-        state["aggregated_context"]
-        if "aggregated_context" in state
-        else state["context"]
-    )
+    if hasattr(state, "aggregated_context"):
+        context = (
+            state.aggregated_context if state.aggregated_context else state.context
+        )
+    elif hasattr(state, "context"):
+        context = state.context
+    else:
+        # Fallback for dict-style state
+        context = state.get("aggregated_context", "") or state.get("context", "")
 
     input_data = {"question": question, "context": context}
 
@@ -135,7 +169,7 @@ def answer_question_from_context_node(state: PlanExecute):
     )
     question_answer_from_context_cot_chain = (
         question_answer_from_context_cot_prompt
-        | llm.with_structured_output(QuestionAnswerFromContext)
+        | llm.with_structured_output(QuestionAnswerFromContext, method="json_mode")
     )
     # Invoke the chain-of-thought LLM chain to generate an answer
     output = question_answer_from_context_cot_chain.invoke(input_data)
@@ -172,7 +206,9 @@ def get_final_answer_node(state: PlanExecute) -> dict:
     final_answer_prompt = ChatPromptTemplate.from_template(final_answer_prompt_template)
 
     # Build the chain: prompt -> LLM -> structured output
-    final_answer_chain = final_answer_prompt | llm.with_structured_output(FinalAnswer)
+    final_answer_chain = final_answer_prompt | llm.with_structured_output(
+        FinalAnswer, method="json_mode"
+    )
 
     # Invoke the chain to synthesize the final answer
     output = final_answer_chain.invoke(input_data)

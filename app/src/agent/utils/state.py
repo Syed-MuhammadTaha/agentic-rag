@@ -34,6 +34,9 @@ class PlanExecute(BaseModel):
     mapping: dict = Field(default_factory=dict, description="mapping of steps to tools")
     curr_context: str = Field(default="", description="current context")
     aggregated_context: str = Field(default="", description="aggregated context")
+    relevant_context: str = Field(
+        default="", description="relevant context from retrieval"
+    )
     tool: str = Field(default="", description="tool to use")
     response: str = Field(default="", description="response from the tool")
 

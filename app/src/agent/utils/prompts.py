@@ -1,109 +1,109 @@
 """Prompt templates for the LangGraph agent."""
 
-planner_prompt = """For the given query {question}, come up with a
-simple step by step plan of how to figure out the answer.
+planner_prompt = """Create a concise step-by-step plan to answer: {question}
 
-This plan should involve individual tasks, that if executed correctly
-will yield the correct answer. Do not add any superfluous steps.
-The result of the final step should be the final answer. Make sure
-that each step has all the information needed - do not skip steps.
+Requirements:
+- List only essential steps
+- Each step must be self-contained
+- Final step should produce the answer
+- Maximum 5 steps
+
+Respond ONLY with valid JSON in this EXACT format:
+{{
+  "steps": [
+    "First step description",
+    "Second step description",
+    "Third step description"
+  ]
+}}
+
+IMPORTANT: Each step must be a STRING, not an object. Do NOT use {{"step": "...", "description": "..."}}.
 """
 
 
-break_down_plan_prompt_template = """You receive a plan {plan} which
-contains a series of steps to follow in order to answer a query.
-you need to go through the plan refine it according to this:
-1. every step has to be able to be executed by either:
-    i. retrieving relevant information from a vector store of book chunks
-    ii. retrieving relevant information from a vector store of book quotes
-    iii. answering a question from a given context.
-2. every step should contain all the information needed to execute it.
+break_down_plan_prompt_template = """Refine this plan: {plan}
 
-output the refined plan
+Each step must use ONE of:
+1. Retrieve from book chunks database
+2. Retrieve from quotes database  
+3. Answer from existing context
+
+Ensure steps are executable and self-contained.
+
+Respond ONLY with JSON in this EXACT format:
+{{
+  "steps": [
+    "Retrieve information about X from book chunks database",
+    "Retrieve quotes about Y from quotes database",
+    "Answer question Z from existing context"
+  ]
+}}
+
+IMPORTANT: Each step must be a STRING, not an object. Do NOT use {{"step": "...", "description": "..."}}.
 """
 
 
-replanner_prompt = """For the given objective, come up with a simple
-step by step plan of how to figure out the answer.
+replanner_prompt = """Update the plan to answer: {question}
 
-This plan should involve individual tasks, that if executed correctly
-will yield the correct answer.
+Original plan: {plan}
+Completed steps: {past_steps}
+Current context: {aggregated_context}
 
-Do not add any superfluous steps. The result of the final step should
-be the final answer.
+Provide ONLY remaining steps needed (never empty). Exclude completed steps.
 
-Make sure that each step has all the information needed - do not skip
-steps.
+Respond ONLY with JSON in this EXACT format:
+{{
+  "plan": {{
+    "steps": [
+      "Remaining step 1 as a string",
+      "Remaining step 2 as a string"
+    ]
+  }},
+  "explanation": "Brief explanation here"
+}}
 
-Assume that the answer was not found yet and you need to update the
-plan accordingly, so the plan should never be empty.
-
-Your objective was this:
-{question}
-
-Your original plan was this:
-{plan}
-
-You have currently done the following steps:
-{past_steps}
-
-You already have the following context:
-{aggregated_context}
-
-Update your plan accordingly. If further steps are needed, fill out
-the plan with only those steps.
-
-Do not return previously done steps as part of the plan.
+IMPORTANT: Each step must be a STRING, not an object. Do NOT use {{"step": "...", "description": "..."}}.
 """
 
 tasks_handler_prompt_template = """
-You are a task handler that receives a task: {curr_task} and must
-decide which tool to use to execute the task.
+Task: {curr_task}
 
-You have the following tools at your disposal:
+Select tool:
+1. "retrieve_chunks" - Search book chapters/sections
+2. "retrieve_quotes" - Search book quotes
+3. "answer_from_context" - Use existing context
 
-1. retrieve_chunks - Retrieves relevant information from a vector store of book chunks
-   - Use when the task requires searching for information in book chapters/sections
-   - Tool name must be EXACTLY: "retrieve_chunks"
+Last tool: {last_tool}
+(Avoid using same tool twice in a row)
 
-2. retrieve_quotes - Retrieves relevant information from a vector store of book quotes
-   - Use when the task requires finding specific quotes or dialogue
-   - Tool name must be EXACTLY: "retrieve_quotes"
-
-3. answer_from_context - Answers a question using the aggregated context
-   - Use ONLY when aggregated context contains enough information: {aggregated_context}
-   - Tool name must be EXACTLY: "answer_from_context"
-
-Additional context:
-- Last tool used: {last_tool}
-  (If last_tool was retrieve_chunks, prefer retrieve_quotes or answer_from_context)
-- Past steps: {past_steps}
-- Original question: {question}
-
-IMPORTANT: You MUST output one of these EXACT tool names:
-- "retrieve_chunks"
-- "retrieve_quotes"  
-- "answer_from_context"
-
-For the query field, provide the search query or question to be processed.
-For curr_context, provide any relevant context (can be empty string).
+JSON format:
+{{"query": "search text", "curr_context": "", "tool": "retrieve_chunks"}}
 """
 
 keep_only_relevant_content_prompt_template = """
-You receive a query: {query} and retrieved documents: {retrieved_documents} from a vector store.
-You need to filter out all the non-relevant information that does not supply important information regarding the {query}.
-Your goal is to filter out the non-relevant information only.
-You can remove parts of sentences that are not relevant to the query or remove whole sentences that are not relevant to the query.
-DO NOT ADD ANY NEW INFORMATION THAT IS NOT IN THE RETRIEVED DOCUMENTS.
-Output the filtered relevant content.
+Query: {query}
+Documents: {retrieved_documents}
+
+Filter out irrelevant information. Keep only text relevant to the query.
+Do NOT add new information.
+
+JSON: {{"relevant_content": "filtered text"}}
 """
 # Prompt template for checking if distilled content is grounded in the original context
 is_distilled_content_grounded_on_content_prompt_template = """
-You receive some distilled content: {distilled_content} and the original context: {original_context}.
-You need to determine if the distilled content is grounded on the original context.
-If the distilled content is grounded on the original context, set the grounded field to true.
-If the distilled content is not grounded on the original context, set the grounded field to false.
-{format_instructions}
+Determine if the distilled content is grounded in the original context.
+
+Distilled Content: {distilled_content}
+
+Original Context: {original_context}
+
+IMPORTANT: Respond ONLY with valid JSON in this exact format:
+{{
+  "grounded": true,
+  "explanation": "your explanation here"
+}}
+
+Do NOT write code, do NOT add any text outside the JSON. Just the JSON object.
 """
 
 question_answer_cot_prompt_template = """ 
@@ -142,30 +142,43 @@ Now, follow the same pattern below.
 Context:  
 {context}  
 Question:  
-{question}  
-"""
-is_grounded_on_facts_prompt_template = """You are a fact-checker that determines if the given answer {answer} is grounded in the given context {context}
-you don't mind if it doesn't make sense, as long as it is grounded in the context.
-output a json containing the answer to the question, and appart from the json format don't output any additional text.
- """
+{question}
 
-can_be_answered_prompt_template = """You are an evaluator that determines if a question can be fully answered from the given context.
+Respond ONLY with JSON: {{"answer_based_on_content": "your answer here"}}
+"""
+is_grounded_on_facts_prompt_template = """Is this answer grounded in the context?
+
+Context: {context}
+Answer: {answer}
+
+Respond ONLY with valid JSON:
+{{"grounded_on_facts": true}} or {{"grounded_on_facts": false}}
+
+No code, no explanation, just JSON.
+"""
+
+can_be_answered_prompt_template = """Determine if the question can be satisfactorily answered using the provided context.
 
 Question: {question}
-Context: {context}
 
-Your task is to determine if the context provides enough information to fully and comprehensively answer the question.
+Available Context:
+{context}
 
-Return True if:
-- The context contains all the necessary information to answer the question completely
-- No important aspects of the question are left unanswered
+Evaluation Criteria:
+- Does the context contain relevant information to answer the question?
+- Can a reasonable answer be formed from this context?
+- If the context has SOME useful information (even if not complete), answer 'true'
+- Only answer 'false' if the context is empty or completely unrelated
 
-Return False if:
-- The context is missing key information needed to answer the question
-- Only partial information is available
-- Additional context or information would be needed for a complete answer
+IMPORTANT: Be generous in evaluation. If you have gathered ANY relevant context that helps answer the question, return true.
 
-Provide a clear explanation for your decision.
+Respond ONLY with valid JSON in this format:
+{{
+  "can_be_answered": true,
+  "explanation": "brief explanation"
+}}
+
+No code, just JSON.
 """
 
 final_answer_prompt_template = """You are a comprehensive answer synthesizer that creates a complete, well-structured response based on all the gathered evidence.
@@ -185,5 +198,7 @@ Your task is to:
 4. Base your answer ONLY on the provided context - do not add external information
 5. If multiple pieces of evidence support the answer, weave them together naturally
 
-Provide a comprehensive final answer that fully addresses the user's question.
+Respond ONLY with JSON: {{"final_answer": "your comprehensive answer here"}}
+
+No code, just JSON.
 """
