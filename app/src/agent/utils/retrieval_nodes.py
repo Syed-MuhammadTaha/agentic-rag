@@ -14,7 +14,6 @@ from agent.utils.prompts import (
 from agent.utils.state import (
     CanBeAnswered,
     GroundedOnFacts,
-    Input,
     IsDistilledContentGroundedOnContent,
     KeepRelevantContent,
     QualitativeRetrievalGraphState,
@@ -26,9 +25,10 @@ load_dotenv()
 llm = ChatOllama(model="llama3.1:8b", temperature=0.0)
 
 
-def retrieve_book_quotes_context_per_question(state: Input):
+def retrieve_book_quotes_context_per_question(state):
     """Retrieve book quotes context for the given question."""
-    question = state["question"]
+    # Handle both Pydantic models and dict
+    question = state.question if hasattr(state, "question") else state["question"]
 
     docs_book_quotes = search_quotes(question)
     book_qoutes = " ".join(doc.page_content for doc in docs_book_quotes)
@@ -39,10 +39,10 @@ def retrieve_book_quotes_context_per_question(state: Input):
     return {"context": book_qoutes_context, "question": question}
 
 
-def retrieve_chunks_context_per_question(state: Input):
+def retrieve_chunks_context_per_question(state):
     """Retrieve relevant context for a given question. The context is retrieved from the book chunks and chapter summaries."""
-    # Retrieve relevant documents
-    question = state["question"]
+    # Handle both Pydantic models and dict
+    question = state.question if hasattr(state, "question") else state["question"]
     docs = search_chunks(question)
 
     # Concatenate document content

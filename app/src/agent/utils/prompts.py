@@ -62,34 +62,31 @@ decide which tool to use to execute the task.
 
 You have the following tools at your disposal:
 
-Tool A: Retrieves relevant information from a vector store of book
-chunks based on a given query.
-    - Use Tool A when the current task should search for information
-      in the book chunks.
+1. retrieve_chunks - Retrieves relevant information from a vector store of book chunks
+   - Use when the task requires searching for information in book chapters/sections
+   - Tool name must be EXACTLY: "retrieve_chunks"
 
-Tool B: Retrieves relevant information from a vector store of quotes
-from the book based on a given query.
-    - Use Tool B when the current task should search for information
-      in the book quotes.
+2. retrieve_quotes - Retrieves relevant information from a vector store of book quotes
+   - Use when the task requires finding specific quotes or dialogue
+   - Tool name must be EXACTLY: "retrieve_quotes"
 
-Tool C: Answers a question from a given context.
-    - Use Tool C ONLY when the current task can be answered by the
-      aggregated context: {aggregated_context}
+3. answer_from_context - Answers a question using the aggregated context
+   - Use ONLY when aggregated context contains enough information: {aggregated_context}
+   - Tool name must be EXACTLY: "answer_from_context"
 
-Additional context for decision making:
-- You also receive the last tool used: {last_tool}
-    - If {last_tool} was retrieve_chunks, avoid using Tool A again;
-      prefer other tools.
-- You also have the past steps: {past_steps} to help understand the
-  context of the task.
-- You also have the initial user's question: {question} for
-  additional context.
+Additional context:
+- Last tool used: {last_tool}
+  (If last_tool was retrieve_chunks, prefer retrieve_quotes or answer_from_context)
+- Past steps: {past_steps}
+- Original question: {question}
 
-Instructions for output:
-- If you decide to use Tools A or B, output the query to be used for
-  the tool and specify the relevant tool.
-- If you decide to use Tool C, output the question to be used for the
-  tool, the context, and specify that the tool to be used is Tool C.
+IMPORTANT: You MUST output one of these EXACT tool names:
+- "retrieve_chunks"
+- "retrieve_quotes"  
+- "answer_from_context"
+
+For the query field, provide the search query or question to be processed.
+For curr_context, provide any relevant context (can be empty string).
 """
 
 keep_only_relevant_content_prompt_template = """
