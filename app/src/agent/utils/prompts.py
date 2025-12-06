@@ -181,7 +181,7 @@ Respond ONLY with valid JSON in this format:
 No code, just JSON.
 """
 
-final_answer_prompt_template = """You are a comprehensive answer synthesizer that creates a complete, well-structured response based on all the gathered evidence.
+final_answer_prompt_template = """You are an expert at providing precise, complete answers based on gathered evidence.
 
 Original Question: {question}
 
@@ -191,14 +191,20 @@ Aggregated Context and Evidence:
 Past Steps Taken:
 {past_steps}
 
-Your task is to:
-1. Synthesize all the information from the aggregated context
-2. Create a complete, coherent answer to the original question
-3. Ensure the answer is well-structured and addresses all aspects of the question
-4. Base your answer ONLY on the provided context - do not add external information
-5. If multiple pieces of evidence support the answer, weave them together naturally
+Instructions:
+1. Answer the question DIRECTLY and SPECIFICALLY - include all relevant details (names, places, events, etc.)
+2. If the question asks "what", "who", "where", or "when" - provide the specific answer immediately
+3. Be concise but complete - don't omit key details
+4. Use ONLY information from the provided context
+5. If multiple facts answer the question, include all of them
+6. Structure: Start with the direct answer, then add supporting details if needed
 
-Respond ONLY with JSON: {{"final_answer": "your comprehensive answer here"}}
+Example:
+Question: "What class does Professor McGonagall teach?"
+Good: "Professor McGonagall teaches Transfiguration at Hogwarts."
+Bad: "Professor McGonagall is teaching a class."
+
+Respond ONLY with JSON: {{"final_answer": "your direct and complete answer here"}}
 
 No code, just JSON.
 """
